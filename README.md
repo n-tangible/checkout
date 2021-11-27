@@ -15,6 +15,8 @@ This endpoint is given as `S3WebsiteURL` in the Cloudformation Outputs, and is o
 The index page of the website can be directly access via a https endpoint.
 This endpoint is given as `S3BucketSecureURL` in the Cloudformation Outputs, and is of the format: `https://<BucketName>.s3.amazonaws.com/index.html`
 
+Access Logs to assets hosted in S3 are pushed to a logging bucket: `<BucketName>-logs`. These can be analysed using tools such as Amazon Athena
+
 #### S3 Public Access
 If you block all public access at the account level, Amazon S3 will continue to block public access to the bucket.
 In this scenario, you would have to edit your account-level Block Public Access settings.

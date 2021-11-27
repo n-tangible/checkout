@@ -23,6 +23,6 @@ else
 	aws cloudformation create-stack --stack-name $STACK_NAME --template-body $TEMPLATE_BODY --parameters $PARAMETERS_JOINED
 fi
 
-if aws s3 ls | grep -q $BUCKET_NAME ; then
-    aws s3 cp $DIR/checkout/ s3://$BUCKET_NAME/ --sse --recursive
+if echo `aws s3 ls` | grep -q $BUCKET_NAME ; then
+	aws s3 cp $DIR/checkout/ s3://$BUCKET_NAME/ --sse --recursive
 fi

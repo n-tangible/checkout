@@ -30,6 +30,10 @@
 						"Status": "Enabled"
 					} ]
 				},
+				"LoggingConfiguration": {
+					"DestinationBucketName": { "Ref": "LoggingBucket" },
+					"LogFilePrefix": { "Fn::Sub": "${BucketName}/" }
+				},
 				"VersioningConfiguration": { "Status": "Enabled" },
 				"WebsiteConfiguration": {
 					"ErrorDocument": "error.html",
@@ -77,6 +81,33 @@
 							}
 						}
 					]
+				}
+			}
+		},
+
+		"LoggingBucket": {
+			"Type": "AWS::S3::Bucket",
+			"Properties": {
+				"AccessControl": "LogDeliveryWrite",
+				"BucketEncryption": {
+					"ServerSideEncryptionConfiguration": [ {
+						"BucketKeyEnabled": true,
+						"ServerSideEncryptionByDefault": {
+							"SSEAlgorithm": "AES256"
+						}
+					} ]
+				},
+				"BucketName": { "Fn::Sub": "${BucketName}-logs" },
+				"LifecycleConfiguration": {
+					"Rules": [ {
+						"AbortIncompleteMultipartUpload": {
+							"DaysAfterInitiation": 1
+						},
+						"ExpirationInDays": 7,
+						"Id": "Delete Current and Permanently Delete Noncurrent Versions",
+						"NoncurrentVersionExpirationInDays": 1,
+						"Status": "Enabled"
+					} ]
 				}
 			}
 		}
