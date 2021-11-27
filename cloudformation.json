@@ -1,11 +1,34 @@
 {
 	"Parameters": {
-		"BucketName": {
+		"SiteName": {
+			"Type": "String"
+		},
+
+		"CustomDomain": {
+			"Default": "False",
 			"Type": "String"
 		}
 	},
 
+	"Conditions": {
+		"RequireCustomDomain": { "Fn::Equals": [ { "Ref": "CustomDomain" }, "True" ] }
+	},
+
 	"Resources": {
+		"AliasRecord": {
+			"Type": "AWS::Route53::RecordSet",
+			"Condition": "RequireCustomDomain",
+			"Properties": {
+				"AliasTarget": {
+					"DNSName": "s3-website-eu-west-1.amazonaws.com.",
+					"HostedZoneId": "Z1BKCTXD74EZPE"
+				},
+				"HostedZoneName": { "Fn::Sub": "${SiteName}.com." },
+				"Name": { "Fn::Sub": "${SiteName}.com." },
+				"Type": "A"
+			}
+		},
+
 		"Bucket": {
 			"Type": "AWS::S3::Bucket",
 			"Properties": {
@@ -18,7 +41,7 @@
 						}
 					} ]
 				},
-				"BucketName": { "Ref": "BucketName" },
+				"BucketName":  { "Fn::Sub": "${SiteName}.com" },
 				"LifecycleConfiguration": {
 					"Rules": [ {
 						"AbortIncompleteMultipartUpload": {
@@ -32,7 +55,7 @@
 				},
 				"LoggingConfiguration": {
 					"DestinationBucketName": { "Ref": "LoggingBucket" },
-					"LogFilePrefix": { "Fn::Sub": "${BucketName}/" }
+					"LogFilePrefix": { "Fn::Sub": "${SiteName}/" }
 				},
 				"VersioningConfiguration": { "Status": "Enabled" },
 				"WebsiteConfiguration": {
@@ -97,7 +120,7 @@
 						}
 					} ]
 				},
-				"BucketName": { "Fn::Sub": "${BucketName}-logs" },
+				"BucketName": { "Fn::Sub": "${SiteName}-logs" },
 				"LifecycleConfiguration": {
 					"Rules": [ {
 						"AbortIncompleteMultipartUpload": {
@@ -115,17 +138,20 @@
 
 	"Outputs": {
 		"S3WebsiteURL": {
-			"Value": { "Fn::GetAtt": [ "Bucket", "WebsiteURL" ] },
-			"Description": "URL for website hosted on S3"
+			"Description": "URL for website hosted on S3",
+			"Value": { "Fn::If": [ "RequireCustomDomain",
+				{ "Ref": "AliasRecord" },
+				{ "Fn::GetAtt": [ "Bucket", "WebsiteURL" ] }
+			] }
 		},
 
 		"S3BucketSecureURL": {
+			"Description": "HTTPS endpoint of index page in bucket",
 			"Value": { "Fn::Join": [ "", [
 				"https://",
 				{ "Fn::GetAtt": [ "Bucket", "DomainName" ] },
 				"/index.html"
-			] ] },
-			"Description": "HTTPS endpoint of index page in bucket"
+			] ] }
 		}
 	}
 }
