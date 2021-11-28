@@ -42,3 +42,12 @@ Note that this deployment requires a certificate to be created in the `us-east-1
 Site assets remain hosted in S3, but the S3 bucket itself is now private. Instead access is only through a HTTPS endpoint `<SiteName>.com` via CloudFront.
 
 S3 and CloudFront Access Logs to assets are pushed to a logging bucket: `<SiteName>-logs`. These can be analysed using tools such as Amazon Athena
+
+## Challenge Results
+Challenge site (CloudFront type): https://checkout-devops-challenge.com/
+- Scaling: The site uses serverless technologies and as such should scale automatically to any user load
+- Dynamic hosting: This site is not dynamic. There are multiple methods of introducing dynamic elements that could add to this architecture, such as using Lambda, ALBs, or API Gateway as additional origins.
+
+### Further monitoring or alerting
+CloudFront Error rate metrics are not supported by CloudFormation, but can be configured with Custom Resources, or Terraform. CloudWatch Alarms, and further alerting with SNS, can then be configured based on these metrics.
+CloudFront real-time logging is not configured here, but can be enabled to forward real-time logs, via Amazin Kinesis, to a monitoring service such as DataDog.
