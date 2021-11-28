@@ -1,0 +1,34 @@
+{
+	"Parameters": {
+		"SiteName": {
+			"Type": "String"
+		},
+
+		"HostedZoneId": {
+			"Type": "String"
+		}
+	},
+
+	"Resources": {
+		"SiteCertificate": {
+			"Type": "AWS::CertificateManager::Certificate",
+			"Properties": {
+				"DomainName": { "Fn::Sub": "${SiteName}.com" },
+				"DomainValidationOptions": [ {
+					"DomainName": { "Fn::Sub": "${SiteName}.com" },
+					"HostedZoneId": { "Ref": "HostedZoneId"}
+				} ],
+				"ValidationMethod": "DNS"
+			}
+		}
+	},
+
+	"Outputs": {
+		"CertificateArn": {
+			"Export": {
+				"Name": { "Fn::Sub": "${AWS::StackName}-SiteCertificateArn" }
+			},
+			"Value": { "Ref": "SiteCertificate" }
+		}
+	}
+}

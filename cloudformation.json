@@ -4,14 +4,31 @@
 			"Type": "String"
 		},
 
-		"CustomDomain": {
+		"HostedZoneId": {
 			"Default": "False",
+			"Type": "String"
+		},
+
+		"SiteType": {
+			"AllowedValues": [ "S3", "CloudFront" ],
+			"Default": "S3",
+			"Description": "Enter static site type. S3 site provides a HTTP endpoint, CloudFront uses HTTPS",
+			"Type": "String"
+		},
+
+		"SiteCertificateArn": {
+			"Default": "",
 			"Type": "String"
 		}
 	},
 
 	"Conditions": {
-		"RequireCustomDomain": { "Fn::Equals": [ { "Ref": "CustomDomain" }, "True" ] }
+		"RequireCustomDomain": { "Fn::Not" : [ { "Fn::Or": [
+			{ "Fn::Equals": [ { "Ref": "HostedZoneId" }, "" ] },
+			{ "Fn::Equals": [ { "Ref": "HostedZoneId" }, "False" ] }
+		] } ] },
+		"IsCloudFrontSite": { "Fn::Equals": [ { "Ref": "SiteType" }, "CloudFront" ] },
+		"IsS3Site": { "Fn::Equals": [ { "Ref": "SiteType" }, "S3" ] }
 	},
 
 	"Resources": {
@@ -19,20 +36,137 @@
 			"Type": "AWS::Route53::RecordSet",
 			"Condition": "RequireCustomDomain",
 			"Properties": {
-				"AliasTarget": {
-					"DNSName": "s3-website-eu-west-1.amazonaws.com.",
-					"HostedZoneId": "Z1BKCTXD74EZPE"
-				},
+				"AliasTarget": { "Fn::If": [ "IsCloudFrontSite",
+					{
+						"DNSName": { "Fn::GetAtt": [ "CloudFrontDistribution", "DomainName" ] },
+						"HostedZoneId": "Z2FDTNDATAQYW2"
+					},
+					{
+						"DNSName": "s3-website-eu-west-1.amazonaws.com.",
+						"HostedZoneId": "Z1BKCTXD74EZPE"
+					}
+				] },
 				"HostedZoneName": { "Fn::Sub": "${SiteName}.com." },
 				"Name": { "Fn::Sub": "${SiteName}.com." },
 				"Type": "A"
 			}
 		},
 
+		"CaaRecord": {
+			"Type": "AWS::Route53::RecordSet",
+			"Properties": {
+				"HostedZoneName": { "Fn::Sub": "${SiteName}.com." },
+				"Name": { "Fn::Sub": "${SiteName}.com." },
+				"ResourceRecords": [
+					"0 issue \"amazon.com\"",
+					"0 issuewild \";\""
+				],
+				"TTL": 3600,
+				"Type": "CAA"
+			}
+		},
+
+		"CloudFrontOriginAccessIdentity": {
+			"Type": "AWS::CloudFront::CloudFrontOriginAccessIdentity",
+			"Condition": "IsCloudFrontSite",
+			"Properties": {
+				"CloudFrontOriginAccessIdentityConfig": {
+					"Comment": { "Fn::Sub": "${SiteName} OAI" }
+				}
+			}
+		},
+
+		"CloudFrontCacheDisabledCachePolicy": {
+			"Type": "AWS::CloudFront::CachePolicy",
+			"Condition": "IsCloudFrontSite",
+			"Properties": {
+				"CachePolicyConfig": {
+					"DefaultTTL": 0,
+					"MaxTTL": 31536000,
+					"MinTTL": 0,
+					"Name": "CacheDisabledPolicy",
+					"ParametersInCacheKeyAndForwardedToOrigin": {
+						"CookiesConfig": { "CookieBehavior": "none" },
+						"EnableAcceptEncodingGzip": true,
+						"HeadersConfig": { "HeaderBehavior": "none" },
+						"QueryStringsConfig": { "QueryStringBehavior": "none" }
+					}
+				}
+			}
+		},
+
+		"CloudFrontDistribution": {
+			"Type": "AWS::CloudFront::Distribution",
+			"Condition": "IsCloudFrontSite",
+			"Properties": {
+				"DistributionConfig": {
+					"Aliases": [ { "Fn::Sub": "${SiteName}.com" } ],
+					"CustomErrorResponses": [
+						{
+							"ErrorCachingMinTTL": 0,
+							"ErrorCode": 403,
+							"ResponseCode": 200,
+							"ResponsePagePath": "/error.html"
+						},
+						{
+							"ErrorCachingMinTTL": 0,
+							"ErrorCode": 500
+						},
+						{
+							"ErrorCachingMinTTL": 0,
+							"ErrorCode": 501
+						},
+						{
+							"ErrorCachingMinTTL": 0,
+							"ErrorCode": 502
+						},
+						{
+							"ErrorCachingMinTTL": 0,
+							"ErrorCode": 503
+						},
+						{
+							"ErrorCachingMinTTL": 0,
+							"ErrorCode": 504
+						}
+					],
+					"DefaultCacheBehavior": {
+						"CachePolicyId": { "Ref": "CloudFrontCacheDisabledCachePolicy" },
+						"Compress": true,
+						"TargetOriginId": { "Fn::Sub": "s3-${Bucket}" },
+						"ViewerProtocolPolicy": "redirect-to-https"
+					},
+					"DefaultRootObject": "index.html",
+					"Enabled": true,
+					"HttpVersion": "http2",
+					"Logging": {
+						"Bucket": { "Fn::GetAtt": [ "LoggingBucket", "DomainName" ] },
+						"IncludeCookies": false,
+						"Prefix": { "Fn::Sub": "cloudfront-${SiteName}/" }
+					},
+					"Origins": [{
+						"DomainName": { "Fn::Sub": "${Bucket}.s3.${AWS::Region}.amazonaws.com" },
+						"Id": { "Fn::Sub": "s3-${Bucket}" },
+						"S3OriginConfig": {
+							"OriginAccessIdentity": { "Fn::Sub": "origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentity}" }
+						}
+					}],
+					"PriceClass": "PriceClass_100",
+					"ViewerCertificate": {
+						"AcmCertificateArn": { "Ref": "SiteCertificateArn" },
+						"MinimumProtocolVersion": "TLSv1.2_2021",
+						"SslSupportMethod": "sni-only"
+					}
+				}
+			}
+		},
+
 		"Bucket": {
 			"Type": "AWS::S3::Bucket",
 			"Properties": {
-				"AccessControl": "PublicRead",
+				"AccessControl": { "Fn::If": [ "IsCloudFrontSite",
+					"Private",
+					"PublicRead"
+				] },
 				"BucketEncryption": {
 					"ServerSideEncryptionConfiguration": [ {
 						"BucketKeyEnabled": true,
@@ -55,13 +189,16 @@
 				},
 				"LoggingConfiguration": {
 					"DestinationBucketName": { "Ref": "LoggingBucket" },
-					"LogFilePrefix": { "Fn::Sub": "${SiteName}/" }
+					"LogFilePrefix": { "Fn::Sub": "s3-${SiteName}/" }
 				},
 				"VersioningConfiguration": { "Status": "Enabled" },
-				"WebsiteConfiguration": {
-					"ErrorDocument": "error.html",
-					"IndexDocument": "index.html"
-				}
+				"WebsiteConfiguration": { "Fn::If": [ "IsCloudFrontSite",
+					{ "Ref": "AWS::NoValue" },
+					{
+						"ErrorDocument": "error.html",
+						"IndexDocument": "index.html"
+					}
+				] }
 			}
 		},
 
@@ -69,42 +206,94 @@
 			"Type": "AWS::S3::BucketPolicy",
 			"Properties": {
 				"Bucket": { "Ref": "Bucket" },
-				"PolicyDocument": {
-					"Version": "2012-10-17",
-					"Statement": [
-						{
-							"Sid": "PublicReadGetObject",
-							"Effect": "Allow",
-							"Principal": "*",
-							"Action": "s3:GetObject",
-							"Resource": { "Fn::Sub": "arn:aws:s3:::${Bucket}/*" }
-						},
-						{
-							"Sid": "DenyUnEncryptedObjectUploads",
-							"Effect": "Deny",
-							"Principal": "*",
-							"Action": "s3:PutObject",
-							"Resource": { "Fn::Sub": "arn:aws:s3:::${Bucket}/*" },
-							"Condition": {
-								"Null": {
-									"s3:x-amz-server-side-encryption": "true"
+				"PolicyDocument": { "Fn::If": [ "IsCloudFrontSite",
+					{
+						"Version": "2012-10-17",
+						"Statement": [
+							{
+								"Sid": "DenyUnEncryptedObjectUploads",
+								"Effect": "Deny",
+								"Principal": "*",
+								"Action": "s3:PutObject",
+								"Resource": { "Fn::Sub": "arn:aws:s3:::${Bucket}/*" },
+								"Condition": {
+									"Null": {
+										"s3:x-amz-server-side-encryption": "true"
+									}
+								}
+							},
+							{
+								"Sid": "DenyIncorrectEncryptionHeader",
+								"Effect": "Deny",
+								"Principal": "*",
+								"Action": "s3:PutObject",
+								"Resource": { "Fn::Sub": "arn:aws:s3:::${Bucket}/*" },
+								"Condition": {
+									"StringNotEquals": {
+										"s3:x-amz-server-side-encryption": "AES256"
+									}
+								}
+							},
+							{
+								"Sid": "DenyInsecureConnections",
+								"Effect": "Deny",
+								"Principal": "*",
+								"Action": "s3:*",
+								"Resource": { "Fn::Sub": "arn:aws:s3:::${Bucket}/*" },
+								"Condition": {
+									"Bool": {
+										"aws:SecureTransport": "false"
+									}
+								}
+							},
+							{
+								"Sid": "CloudFrontAccess",
+								"Effect": "Allow",
+								"Principal": {
+									"CanonicalUser": { "Fn::GetAtt": [ "CloudFrontOriginAccessIdentity", "S3CanonicalUserId" ] }
+								},
+								"Action": "s3:GetObject",
+								"Resource": { "Fn::Sub": "arn:aws:s3:::${Bucket}/*" }
+							}
+						]
+					},
+					{
+						"Version": "2012-10-17",
+						"Statement": [
+							{
+								"Sid": "PublicReadGetObject",
+								"Effect": "Allow",
+								"Principal": "*",
+								"Action": "s3:GetObject",
+								"Resource": { "Fn::Sub": "arn:aws:s3:::${Bucket}/*" }
+							},
+							{
+								"Sid": "DenyUnEncryptedObjectUploads",
+								"Effect": "Deny",
+								"Principal": "*",
+								"Action": "s3:PutObject",
+								"Resource": { "Fn::Sub": "arn:aws:s3:::${Bucket}/*" },
+								"Condition": {
+									"Null": {
+										"s3:x-amz-server-side-encryption": "true"
+									}
+								}
+							},
+							{
+								"Sid": "DenyIncorrectEncryptionHeader",
+								"Effect": "Deny",
+								"Principal": "*",
+								"Action": "s3:PutObject",
+								"Resource": { "Fn::Sub": "arn:aws:s3:::${Bucket}/*" },
+								"Condition": {
+									"StringNotEquals": {
+										"s3:x-amz-server-side-encryption": "AES256"
+									}
 								}
 							}
-						},
-						{
-							"Sid": "DenyIncorrectEncryptionHeader",
-							"Effect": "Deny",
-							"Principal": "*",
-							"Action": "s3:PutObject",
-							"Resource": { "Fn::Sub": "arn:aws:s3:::${Bucket}/*" },
-							"Condition": {
-								"StringNotEquals": {
-									"s3:x-amz-server-side-encryption": "AES256"
-								}
-							}
-						}
-					]
-				}
+						]
+					}
+				] }
 			}
 		},
 
@@ -137,7 +326,7 @@
 	},
 
 	"Outputs": {
-		"S3WebsiteURL": {
+		"WebsiteURL": {
 			"Description": "URL for website hosted on S3",
 			"Value": { "Fn::If": [ "RequireCustomDomain",
 				{ "Ref": "AliasRecord" },
@@ -146,6 +335,7 @@
 		},
 
 		"S3BucketSecureURL": {
+			"Condition": "IsS3Site",
 			"Description": "HTTPS endpoint of index page in bucket",
 			"Value": { "Fn::Join": [ "", [
 				"https://",
