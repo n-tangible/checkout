@@ -2,8 +2,9 @@
 
 # Input parameters required are in order:
 SITE_NAME=${1//_/-}
-HOSTED_ZONE_ID=$2
-SITE_TYPE=$3
+UPLOAD_USER=$2
+HOSTED_ZONE_ID=$3
+SITE_TYPE=$4
 
 if [ "$SITE_NAME" == "" ]; then
 	echo "Name of website required."
@@ -18,6 +19,7 @@ declare -a PARAMETERS=(
 	"ParameterKey=SiteName,ParameterValue=$SITE_NAME"
 	"ParameterKey=HostedZoneId,ParameterValue=$HOSTED_ZONE_ID"
 	"ParameterKey=SiteType,ParameterValue=$SITE_TYPE"
+	"ParameterKey=UploadUser,ParameterValue=$UPLOAD_USER"
 )
 
 STACK_NAME="$SITE_NAME-stack"
@@ -54,13 +56,17 @@ fi
 PARAMETERS_JOINED=$(IFS=$' '; echo "${PARAMETERS[*]}")
 
 if aws cloudformation --region eu-west-1 list-stacks --query "StackSummaries[*].StackName" | grep -q $STACK_NAME ; then
-	aws cloudformation update-stack --region eu-west-1 --stack-name $STACK_NAME --template-body $TEMPLATE_BODY --parameters $PARAMETERS_JOINED
+	aws cloudformation update-stack --region eu-west-1 --stack-name $STACK_NAME --template-body $TEMPLATE_BODY --parameters $PARAMETERS_JOINED --capabilities CAPABILITY_NAMED_IAM
 else
-	aws cloudformation create-stack --region eu-west-1 --stack-name $STACK_NAME --template-body $TEMPLATE_BODY --parameters $PARAMETERS_JOINED
+	aws cloudformation create-stack --region eu-west-1 --stack-name $STACK_NAME --template-body $TEMPLATE_BODY --parameters $PARAMETERS_JOINED --capabilities CAPABILITY_NAMED_IAM
 fi
 
 echo "CloudFormation stacks deploying, or already up to date"
 
-if echo `aws s3 ls` | grep -q "$SITE_NAME.com" ; then
-	aws s3 cp $DIR/checkout/ s3://"$SITE_NAME.com"/ --sse --recursive
+if [ $UPLOAD_USER != "True" ] ; then
+	if echo `aws s3 ls` | grep -q "$SITE_NAME.com" ; then
+		aws s3 sync $DIR/checkout/ s3://"$SITE_NAME.com"/ --sse --delete
+	else
+		echo "S3 Bucket currently not available, please try again in a short time"
+	fi
 fi
