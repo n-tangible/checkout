@@ -76,20 +76,66 @@
 			}
 		},
 
-		"CloudFrontCacheDisabledCachePolicy": {
+		"CloudFrontCachePolicy": {
 			"Type": "AWS::CloudFront::CachePolicy",
 			"Condition": "IsCloudFrontSite",
 			"Properties": {
 				"CachePolicyConfig": {
-					"DefaultTTL": 0,
+					"DefaultTTL": 86400,
 					"MaxTTL": 31536000,
 					"MinTTL": 0,
-					"Name": "CacheDisabledPolicy",
+					"Name": { "Fn::Sub": "${SiteName}CachePolicy" },
 					"ParametersInCacheKeyAndForwardedToOrigin": {
 						"CookiesConfig": { "CookieBehavior": "none" },
 						"EnableAcceptEncodingGzip": true,
 						"HeadersConfig": { "HeaderBehavior": "none" },
 						"QueryStringsConfig": { "QueryStringBehavior": "none" }
+					}
+				}
+			}
+		},
+
+		"CloudFrontSecurityHeadersResponsePolicy": {
+			"Type": "AWS::CloudFront::ResponseHeadersPolicy",
+			"Condition": "IsCloudFrontSite",
+			"Properties": {
+				"ResponseHeadersPolicyConfig": {
+					"CorsConfig": {
+						"AccessControlAllowCredentials": false,
+						"AccessControlAllowHeaders": { "Items": [ "*" ] },
+						"AccessControlAllowMethods": { "Items": [ "GET", "HEAD" ] },
+						"AccessControlAllowOrigins": { "Items": [ { "Fn::Sub": "https://${SiteName}.com" } ] },
+						"AccessControlMaxAgeSec": 86400,
+						"OriginOverride": true
+					},
+					"Name": { "Fn::Sub": "${SiteName}SecurityHeadersResponsePolicy" },
+					"SecurityHeadersConfig": {
+						"ContentSecurityPolicy": {
+							"ContentSecurityPolicy": "default-src 'self';",
+							"Override": true
+						},
+						"ContentTypeOptions": {
+							"Override": true
+						},
+						"FrameOptions": {
+							"FrameOption": "DENY",
+							"Override": true
+						},
+						"ReferrerPolicy": {
+							"Override": true,
+							"ReferrerPolicy": "strict-origin-when-cross-origin"
+						},
+						"StrictTransportSecurity": {
+							"AccessControlMaxAgeSec": 86400,
+							"IncludeSubdomains": true,
+							"Override": true,
+							"Preload": true
+						},
+						"XSSProtection": {
+							"ModeBlock": true,
+							"Override": true,
+							"Protection": true
+						}
 					}
 				}
 			}
@@ -130,8 +176,11 @@
 						}
 					],
 					"DefaultCacheBehavior": {
-						"CachePolicyId": { "Ref": "CloudFrontCacheDisabledCachePolicy" },
+						"AllowedMethods": [ "GET", "HEAD" ],
+						"CachedMethods": [ "GET", "HEAD" ],
+						"CachePolicyId": { "Ref": "CloudFrontCachePolicy" },
 						"Compress": true,
+						"ResponseHeadersPolicyId": { "Ref": "CloudFrontSecurityHeadersResponsePolicy" },
 						"TargetOriginId": { "Fn::Sub": "s3-${Bucket}" },
 						"ViewerProtocolPolicy": "redirect-to-https"
 					},
